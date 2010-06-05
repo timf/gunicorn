@@ -82,7 +82,10 @@ class Application(object):
         if self.cfg.spew:
             debug.spew()
         if self.cfg.daemon:
+            # daemonize should not close logfile fd, see method doc
+            self.close_logfile()
             util.daemonize()
+            self.configure_logging()
         else:
             os.setpgrp()
         Arbiter(self).run()
@@ -95,7 +98,8 @@ class Application(object):
 
         handlers = []
         if self.cfg.logfile != "-":
-            handlers.append(logging.FileHandler(self.cfg.logfile))
+            self.logfilehandler = logging.FileHandler(self.cfg.logfile)
+            handlers.append(self.logfilehandler)
         else:
             handlers.append(logging.StreamHandler())
 
@@ -115,5 +119,17 @@ class Application(object):
         for h in handlers:
             h.setFormatter(logging.Formatter(format, datefmt))
             logger.addHandler(h)
-
-
+            
+    def close_logfile(self):
+        """\
+        Close logfile fd if it logfile was configured.
+        One way to handle logging under daemonization would be to let the
+        daemonize method close the logger fd and then reconfigure logging
+        afterwards, but that results in duplicate log messages.  Closing
+        it manually before daemonization will prevent that.
+        """
+        if not self.logfilehandler:
+            return
+            
+        self.logfilehandler.close()
+        self.logfilehandler = None
